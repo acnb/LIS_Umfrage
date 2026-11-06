@@ -1,0 +1,9 @@
+# Ergebnisse
+res/
+
+# Lokaler Pfad zu den Originaldaten
+.Renviron
+
+# R-Sitzungsdateien, können Originaldaten enthalten
+.RData
+.Rhistory
