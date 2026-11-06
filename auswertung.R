@@ -277,6 +277,197 @@ summarise_numeric <- function(data, var, label, digits) {
     mutate(group = "Laboratory characteristics")
 }
 
+# Funktionen für die Fragebogen-Gruppen ----------------------------------------
+
+GROUP_LABELS <- c(
+  "Elektronisches Order Entry" = "Electronic order entry",
+  "Systemfunktionen" = "System functions",
+  "Benutzerfreundlichkeit und Interface" = "Usability and interface",
+  "Performance und Stabilität" = "Performance and stability",
+  "Integration und Schnittstellen" = "Integration and interfaces",
+  "Dokumentation und Compliance" = "Documentation and compliance",
+  "Reporting und Analytics" = "Reporting and analytics",
+  "Neue Funktionalitäten" = "New functionalities"
+)
+
+# Die Reihenfolge entspricht den Werten 5 bis 1 der Skala.
+RATING_LABELS <- c("Exemplary", "Good", "Satisfactory", "Adequate", "Inadequate")
+
+RATING_COLOURS <- c(
+  Inadequate = "#c8352f",
+  Adequate = "#f0a59f",
+  Satisfactory = "#dedcd6",
+  Good = "#86b6ef",
+  Exemplary = "#1c5cab"
+)
+
+NOT_AVAILABLE_COLOUR <- "#898781"
+
+# Eine Zeile je Labor und Item. score ist 5 (vorbildlich) bis 1 (unzureichend) und
+# fehlt bei "Nicht vorhanden" und "Nicht genutzt", die nicht zur Skala gehören.
+ratings_long <- function(labs, codebook) {
+  item_groups <- codebook |>
+    filter(block == "importance") |>
+    transmute(item_number, group = unname(GROUP_LABELS[item_group]))
+  assert(!anyNA(item_groups$group), "Eine Fragebogen-Gruppe hat keinen englischen Namen.")
+
+  labs |>
+    select(response_id, starts_with("importance_"), matches("^implementation_[0-9]")) |>
+    pivot_longer(
+      -response_id,
+      names_to = c(".value", "item_number"),
+      names_pattern = "(importance|implementation)_([0-9]+)",
+      names_transform = list(item_number = as.integer)
+    ) |>
+    left_join(item_groups, by = "item_number") |>
+    mutate(score = 6L - match(implementation, IMPLEMENTATION_LEVELS[1:5]))
+}
+
+# "Good" und "poor" beziehen sich auf die Skala, "not available" auf alle Antworten.
+summarise_groups <- function(ratings) {
+  ratings |>
+    summarise(
+      items = n_distinct(item_number),
+      mean_importance = mean(importance, na.rm = TRUE),
+      mean_implementation = mean(score, na.rm = TRUE),
+      n_ratings = sum(!is.na(implementation)),
+      n_scale = sum(!is.na(score)),
+      good_pct = 100 * sum(score >= 4, na.rm = TRUE) / n_scale,
+      poor_pct = 100 * sum(score <= 2, na.rm = TRUE) / n_scale,
+      not_available_pct = 100 * sum(implementation == "Nicht vorhanden", na.rm = TRUE) / n_ratings,
+      .by = group
+    ) |>
+    arrange(desc(good_pct))
+}
+
+# Berechnet die Lage der Segmente. "Satisfactory" liegt je zur Hälfte links und
+# rechts der Mitte, die übrigen Stufen schließen nach außen an.
+likert_segments <- function(ratings) {
+  shares <- ratings |>
+    filter(!is.na(score)) |>
+    mutate(rating = RATING_LABELS[6L - score]) |>
+    count(group, rating) |>
+    mutate(share = 100 * n / sum(n), .by = group)
+
+  side <- function(ratings_from_centre, direction) {
+    shares |>
+      filter(rating %in% ratings_from_centre) |>
+      mutate(
+        order = match(rating, ratings_from_centre),
+        width = if_else(rating == "Satisfactory", share / 2, share)
+      ) |>
+      arrange(group, order) |>
+      mutate(
+        end = direction * cumsum(width),
+        start = lag(end, default = 0),
+        .by = group
+      )
+  }
+
+  bind_rows(
+    side(c("Satisfactory", "Adequate", "Inadequate"), -1),
+    side(c("Satisfactory", "Good", "Exemplary"), 1)
+  )
+}
+
+plot_implementation <- function(segments, groups) {
+  panels <- c("Rating of implementation", "Not available")
+  bar_half_height <- 0.36
+  label_size <- 7 / .pt
+  label_gap <- 1.5
+
+  rows <- groups |>
+    mutate(
+      row = rev(row_number()),
+      row_label = str_glue("{group}\n{items} items, n={n_ratings}")
+    )
+
+  bars <- segments |>
+    left_join(rows, by = "group") |>
+    mutate(panel = factor(panels[1], levels = panels))
+
+  outer_ends <- bars |>
+    summarise(left = min(start, end), right = max(start, end), .by = c(group, row, panel)) |>
+    left_join(select(rows, group, good_pct, poor_pct), by = "group")
+
+  not_available <- rows |>
+    mutate(panel = factor(panels[2], levels = panels))
+
+  panel_limits <- tibble(
+    panel = factor(panels[c(1, 1, 2, 2)], levels = panels),
+    x = c(-85, 75, 0, 40),
+    row = 1
+  )
+
+  ggplot() +
+    geom_blank(data = panel_limits, aes(x = x, y = row)) +
+    geom_rect(
+      data = bars,
+      aes(
+        xmin = start, xmax = end,
+        ymin = row - bar_half_height, ymax = row + bar_half_height,
+        fill = rating
+      ),
+      colour = "white",
+      linewidth = 0.25
+    ) +
+    geom_rect(
+      data = not_available,
+      aes(
+        xmin = 0, xmax = not_available_pct,
+        ymin = row - bar_half_height, ymax = row + bar_half_height
+      ),
+      fill = NOT_AVAILABLE_COLOUR
+    ) +
+    geom_vline(
+      data = tibble(panel = factor(panels[1], levels = panels)),
+      aes(xintercept = 0),
+      colour = "#52514e",
+      linewidth = 0.3
+    ) +
+    geom_text(
+      data = outer_ends,
+      aes(x = left - label_gap, y = row, label = sprintf("%.0f%%", poor_pct)),
+      hjust = 1, size = label_size, family = "Arial"
+    ) +
+    geom_text(
+      data = outer_ends,
+      aes(x = right + label_gap, y = row, label = sprintf("%.0f%%", good_pct)),
+      hjust = 0, size = label_size, family = "Arial"
+    ) +
+    geom_text(
+      data = not_available,
+      aes(x = not_available_pct + label_gap, y = row, label = sprintf("%.0f%%", not_available_pct)),
+      hjust = 0, size = label_size, family = "Arial"
+    ) +
+    facet_grid(cols = vars(panel), scales = "free_x", space = "free_x") +
+    scale_x_continuous(
+      breaks = seq(-75, 75, 25),
+      labels = \(x) str_c(abs(x), "%"),
+      expand = expansion(0)
+    ) +
+    scale_y_continuous(
+      breaks = rows$row,
+      labels = rows$row_label,
+      expand = expansion(add = 0.5)
+    ) +
+    scale_fill_manual(values = RATING_COLOURS, breaks = names(RATING_COLOURS), name = NULL) +
+    labs(x = NULL, y = NULL) +
+    theme_minimal(base_size = 8, base_family = "Arial") +
+    theme(
+      axis.text = element_text(colour = "#0b0b0b", size = 7),
+      axis.text.y = element_text(hjust = 0, lineheight = 1.05),
+      legend.key.size = unit(3, "mm"),
+      legend.position = "bottom",
+      legend.text = element_text(size = 7),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(colour = "#e1e0d9", linewidth = 0.2),
+      panel.spacing.x = unit(5, "mm"),
+      strip.text = element_text(colour = "#0b0b0b", size = 8, face = "bold")
+    )
+}
+
 # Auswertung -------------------------------------------------------------------
 
 data_path <- Sys.getenv("LIS_DATEN_PFAD")
@@ -354,3 +545,63 @@ table_1 |>
     stub_row_group.border.style = "none"
   ) |>
   gtsave("res/table_1.html")
+
+# Fragebogen-Gruppen -----------------------------------------------------------
+
+ratings <- ratings_long(labs, survey$codebook)
+groups <- summarise_groups(ratings)
+
+n_rated_labs <- ratings |>
+  filter(!is.na(implementation)) |>
+  pull(response_id) |>
+  n_distinct()
+
+population <- str_glue(
+  "Based on {sum(groups$n_ratings)} ratings from {n_rated_labs} of the {nrow(labs)} ",
+  "included laboratories; each laboratory contributes several ratings. Implementation ",
+  "was only asked for features rated 4 or 5 for importance."
+)
+
+groups |>
+  transmute(
+    Group = group,
+    Items = items,
+    `Ratings, n` = n_ratings,
+    `Importance, mean` = sprintf("%.1f", mean_importance),
+    `Implementation, mean` = sprintf("%.1f", mean_implementation),
+    `Good or exemplary, %` = sprintf("%.1f", good_pct),
+    `Adequate or inadequate, %` = sprintf("%.1f", poor_pct),
+    `Not available, %` = sprintf("%.1f", not_available_pct)
+  ) |>
+  gt() |>
+  tab_caption("Importance and implementation of LIS features by questionnaire group.") |>
+  tab_source_note(str_glue(
+    "Importance ranged from 1 (unimportant) to 5 (very important), implementation ",
+    "from 1 (inadequate) to 5 (exemplary). Percentages of good or exemplary and of ",
+    "adequate or inadequate refer to ratings on this scale, the percentage not ",
+    "available refers to all ratings. {population}"
+  )) |>
+  tab_source_note("LIS, laboratory information system.") |>
+  opt_table_font(font = c("Arial", "Helvetica", "sans-serif")) |>
+  tab_options(table_body.hlines.style = "none") |>
+  gtsave("res/table_2.html")
+
+ggsave(
+  "res/figure_1.png",
+  plot = plot_implementation(likert_segments(ratings), groups),
+  device = "png", width = 170, height = 110, units = "mm",
+  dpi = 600, bg = "white"
+)
+
+write_lines(
+  str_glue(
+    "Implementation of LIS features by questionnaire group. Bars are centred on the ",
+    "middle of the rating scale, with satisfactory ratings split evenly across the ",
+    "centre. Numbers at the bar ends give the percentage of adequate or inadequate ",
+    "ratings (left) and of good or exemplary ratings (right) among ratings on the ",
+    "scale; satisfactory ratings are not part of these numbers. The right panel gives ",
+    "the percentage of all ratings stating that a feature is not available. ",
+    "{population} LIS, laboratory information system."
+  ),
+  "res/figure_1_caption.txt"
+)

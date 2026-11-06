@@ -37,6 +37,17 @@ Für die weiteren Auswertungen gilt:
 - **Umsetzungsfragen:** Sie liegen nur für Items vor, die das Labor mit Wichtigkeit 4 oder 5 bewertet hat. Die Bewertungen sind daher keine Stichprobe über alle Items und Labore.
 - **`Nicht vorhanden` und `Nicht genutzt`:** Sie gehören nicht zur Skala der Umsetzung. Die jeweilige Auswertung legt fest, wie sie behandelt werden.
 
+## Fragebogen-Gruppen
+
+Die Items werden nach den acht Gruppen des Fragebogens ausgewertet (`item_group` im Codebuch). Sie standen vor der Erhebung fest. Eine nachträgliche Einteilung in inhaltliche Bereiche wurde verworfen, weil die Zuordnung einzelner Items das Ergebnis mitbestimmt: Die Anforderungssteuerung war je nach Itemauswahl der schwächste oder der beste Bereich.
+
+Grundlage sind die Umsetzungsbewertungen der `labs`, also 3038 Bewertungen aus 81 Laboren. Jedes Labor trägt mehrere Bewertungen bei.
+
+- **Gut oder vorbildlich, ausreichend oder unzureichend:** Prozent der fünf Skalenantworten.
+- **Nicht vorhanden:** Prozent aller Antworten. `Nicht genutzt` zählt hier im Nenner mit.
+
+`res/table_2.html` enthält die Kennzahlen je Gruppe, `res/figure_1.png` zeigt sie als zentrierte Likert-Balken. Die Bildunterschrift steht in `res/figure_1_caption.txt`.
+
 ## Projektstruktur
 
 ```text
