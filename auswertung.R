@@ -468,6 +468,417 @@ plot_implementation <- function(segments, groups) {
     )
 }
 
+# Funktionen für die Importance-Performance-Analyse ---------------------------
+
+# Wegen des Deckeneffekts beginnt die Hauptachse hier, darunter folgt eine Randnotiz.
+IMPORTANCE_CUTOFF <- 3.5
+
+# Beschriftet werden die größten Lücken unter Merkmalen mit genügend Bewertungen.
+N_GAP_LABELS <- 10
+MIN_GAP_N <- 20
+
+# Englische Kurznamen, zugeordnet über den Anfang des Itemtexts.
+ITEM_LABELS_EN <- tribble(
+  ~prefix,                                         ~label,
+  "einfach zu erfüllende Hard- und Software",      "Modest hardware and software requirements",
+  "Module für Mikrobiologie",                      "Microbiology module",
+  "Module für Blutdepot",                          "Blood bank module",
+  "Modul für Humangenetik",                        "Human genetics module",
+  "Modul für Blutspende",                          "Blood donation module",
+  "Modul für Pathologie",                          "Pathology module",
+  "Modul für Neugeborenenscreening",               "Newborn screening module",
+  "KV-Abrechnung",                                 "Statutory health insurance billing",
+  "Probenverwaltung",                              "Sample management and tracking",
+  "Flexible Auftragserfassung",                    "Flexible order capture",
+  "Strukturierte Befunderstellung",                "Structured reporting",
+  "automatisierte Erstellung von Diagrammen",      "Automated charts in reports",
+  "Integrierte Qualitätskontrolle",                "Integrated quality control",
+  "Stammdatenverwaltung",                          "Master data management",
+  "Präanalytik",                                   "Preanalytical documentation",
+  "Modul für Id-Check",                            "Patient identification module",
+  "Modul für Fremdversand",                        "Send-out testing module",
+  "Modul für Referenzbereichsverifizierung",       "Reference interval verification",
+  "Programmierbare Regeln",                        "Rules for comments and reflex testing",
+  "regelbasierte Autovalidation",                  "Rule-based autovalidation",
+  "Deltacheck",                                    "Delta check",
+  "Berechnung von z-log Werten",                   "zlog value calculation",
+  "Intuitive, übersichtliche Bedienoberfläche",    "Intuitive user interface",
+  "farbliche differenzierte Hervorhebung",         "Colour highlighting of critical values",
+  "Anpassbare Benutzeroberflächen",                "Customisable user interface",
+  "Erweiterte Suchfunktionen",                     "Advanced search",
+  "Rollenbasierte Benutzerrechte",                 "Role-based access rights",
+  "Mobile/Tablet-Unterstützung",                   "Mobile and tablet support",
+  "Schnittstellen zur Laborgeräte-Anbindung",      "Rapid instrument interfacing",
+  "einfache Befundlayout Anpassung",               "Report layout customisation",
+  "KIS/HIS-Integration",                           "Hospital information system integration",
+  "Anbindung externer Labore",                     "Connection to external laboratories",
+  "HL7 V2/V3",                                     "HL7 v2/v3 interfaces",
+  "FHIR-Standardschnittstellen",                   "FHIR interfaces",
+  "Schnittstelle für Drittsysteme",                "Third-party system interfaces",
+  "lesender direkter Datenbankzugriff",            "Direct read access to the database",
+  "Datenexport",                                   "Data export over long periods",
+  "Unterstützung von SNOMED CT",                   "SNOMED CT support",
+  "Unterstützung von LOINC",                       "LOINC support",
+  "Unterstützung von UCUM",                        "UCUM support",
+  "Anbindung an KIM",                              "Connection to KIM secure messaging",
+  "IVDR/FDA-Konformität",                          "IVDR/FDA compliance",
+  "Vollständiger Audit-Trail",                     "Complete audit trail",
+  "Langzeitarchivierung",                          "Long-term archiving",
+  "Elektronische Signatur zum Signieren von Bef",  "Electronic signature of reports",
+  "Elektronische Signatur zum Signieren von Anf",  "Electronic signature of orders",
+  "Validierungsunterstützung",                     "Validation support (rules, AI)",
+  "Standardberichterstellung",                     "Standard reports",
+  "Individuelle Report-Konfiguration",             "Custom report configuration",
+  "Statistische Auswertungen",                     "Statistical analyses",
+  "Dashboard/KPI-Übersichten",                     "Dashboards and key performance indicators",
+  "erweiterte Suchfunktionen auf der Datenbank",   "Advanced database search",
+  "Schnelle Systemantwortzeiten",                  "Fast response times",
+  "Support",                                       "Vendor support",
+  "Testumgebung",                                  "Test environment",
+  "Hohe Systemverfügbarkeit",                      "High availability",
+  "Automatische Backup-Funktionen",                "Automatic backup",
+  "Disaster-Recovery-Funktionen",                  "Disaster recovery",
+  "Einfachheit von Updates/Upgrades",              "Ease of updates and upgrades",
+  "Biobanking",                                    "Biobanking",
+  "dynamische Befunde",                            "Interactive result portal",
+  "automatisierte Softwaretests",                  "Automated software testing",
+  "mögliche Migration der Daten",                  "Data migration to a new LIS",
+  "Stammdaten synchronisiert",                     "Master data synchronised with the LIS",
+  "Nachforderungsmanagement",                      "Add-on test management",
+  "dynamische Maskensteuerung",                    "Dynamic order forms",
+  "einfache Order-Entry Masken Anpassung",         "Order form customisation",
+  "Anzeige von benötigter Probenart",              "Display of required sample type",
+  "Anzeige von benötigter Probenmenge",            "Display of required sample volume",
+  "Einsenderspezifische Profile",                  "Requester-specific profiles",
+  "diagnosebezogenen Panel-Vorschläge",            "Diagnosis-based panel suggestions",
+  "Anzeige von Vorbefunden",                       "Display of previous results when ordering",
+  "Behandlung von Re-Testing Intervallen",         "Retesting interval rules",
+  "Kostenanzeige",                                 "Cost display",
+  "Überprüfung von zu erfüllenden Kriterien",      "Order eligibility checks"
+)
+
+GROUP_COLOURS <- c(
+  "System functions" = "#2a78d6",
+  "Usability and interface" = "#eb6834",
+  "Integration and interfaces" = "#1baf7a",
+  "Documentation and compliance" = "#eda100",
+  "Reporting and analytics" = "#e87ba4",
+  "Performance and stability" = "#008300",
+  "New functionalities" = "#6250d6",
+  "Electronic order entry" = "#e34948"
+)
+
+# Die Form unterscheidet die Gruppen zusätzlich zur Farbe.
+GROUP_SHAPES <- c(
+  "System functions" = 21,
+  "Usability and interface" = 22,
+  "Integration and interfaces" = 24,
+  "Documentation and compliance" = 23,
+  "Reporting and analytics" = 25,
+  "Performance and stability" = 3,
+  "New functionalities" = 4,
+  "Electronic order entry" = 8
+)
+
+english_item_labels <- function(items) {
+  items <- str_squish(items)
+  matches <- map(ITEM_LABELS_EN$prefix, \(x) which(str_starts(items, fixed(x))))
+  assert(all(lengths(matches) == 1), "Ein englischer Itemname passt nicht zu genau einem Item.")
+  matches <- unlist(matches)
+  assert(setequal(matches, seq_along(items)), "Nicht jedes Item hat einen englischen Namen.")
+  ITEM_LABELS_EN$label[match(seq_along(items), matches)]
+}
+
+summarise_items <- function(ratings, codebook) {
+  labels <- codebook |>
+    filter(block == "importance") |>
+    transmute(item_number, label = english_item_labels(item))
+
+  ratings |>
+    summarise(
+      group = first(group),
+      mean_importance = mean(importance, na.rm = TRUE),
+      n_importance = sum(!is.na(importance)),
+      mean_implementation = mean(score, na.rm = TRUE),
+      n_implementation = sum(!is.na(score)),
+      .by = item_number
+    ) |>
+    left_join(labels, by = "item_number") |>
+    mutate(gap = mean_importance - mean_implementation) |>
+    add_gap_rank()
+}
+
+# Rang 1 bis N_GAP_LABELS für die größten Lücken; Abbildung und Bildunterschrift
+# verwenden dieselbe Nummerierung.
+add_gap_rank <- function(items) {
+  ranks <- items |>
+    filter(mean_importance >= IMPORTANCE_CUTOFF, n_implementation >= MIN_GAP_N) |>
+    slice_max(gap, n = N_GAP_LABELS, with_ties = FALSE) |>
+    transmute(item_number, gap_rank = row_number())
+
+  left_join(items, ranks, by = "item_number")
+}
+
+# Zwei Teile mit gemeinsamer y-Achse: links eine schmale Randnotiz für Merkmale
+# unter der Abschneidegrenze, rechts das Hauptfeld.
+plot_importance_performance <- function(items) {
+  label_size <- 6.5 / .pt
+  max_point_size <- 6
+  means <- c(
+    importance = mean(items$mean_importance),
+    implementation = mean(items$mean_implementation)
+  )
+
+  points <- items |>
+    mutate(
+      group = factor(group, levels = names(GROUP_COLOURS)),
+      # Ungefähre Punktgröße in mm, damit Beschriftungen den Punkten ausweichen.
+      repel_size = max_point_size * sqrt(n_implementation / max(n_implementation))
+    )
+
+  # Identische Skalen in beiden Teilen, damit patchwork die Legenden zusammenführt.
+  shared <- list(
+    geom_hline(yintercept = means[["implementation"]], colour = "#898781", linewidth = 0.3),
+    geom_point(
+      aes(size = n_implementation, colour = group, fill = group, shape = group),
+      alpha = 0.75,
+      stroke = 0.4
+    ),
+    scale_y_continuous(
+      limits = range(points$mean_implementation) + c(-0.1, 0.1),
+      breaks = seq(1.5, 4.5, 0.5)
+    ),
+    scale_colour_manual(values = GROUP_COLOURS, limits = names(GROUP_COLOURS), name = NULL),
+    scale_fill_manual(values = GROUP_COLOURS, limits = names(GROUP_COLOURS), name = NULL),
+    scale_shape_manual(values = GROUP_SHAPES, limits = names(GROUP_COLOURS), name = NULL),
+    scale_size_area(
+      max_size = max_point_size,
+      limits = c(0, max(points$n_implementation)),
+      breaks = c(10, 25, 50),
+      name = "Ratings, n"
+    ),
+    guides(
+      colour = guide_legend(ncol = 4, order = 1, override.aes = list(size = 2.5)),
+      fill = guide_legend(ncol = 4, order = 1),
+      shape = guide_legend(ncol = 4, order = 1),
+      size = guide_legend(order = 2)
+    ),
+    theme_minimal(base_size = 8, base_family = "Arial"),
+    theme(
+      axis.text = element_text(colour = "#0b0b0b", size = 7),
+      legend.text = element_text(size = 7),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(colour = "#e1e0d9", linewidth = 0.2),
+      plot.title = element_text(colour = "#0b0b0b", size = 8, face = "bold", hjust = 0.5)
+    )
+  )
+
+  # Ein halbtransparenter Kasten ohne Rahmen hält Beschriftungen über Linien und
+  # Punkten lesbar und gibt ggrepel verlässliche Abmessungen zum Ausweichen.
+  repel <- function(..., min.segment.length = 0) {
+    ggrepel::geom_label_repel(
+      aes(label = label, point.size = repel_size),
+      size = label_size, family = "Arial", colour = "#0b0b0b",
+      fill = alpha("white", 0.8), linetype = "blank", label.padding = unit(0.08, "lines"),
+      min.segment.length = min.segment.length, segment.size = 0.2, segment.colour = "#52514e",
+      max.overlaps = Inf, max.time = 5, max.iter = 500000, seed = 1,
+      ...
+    )
+  }
+
+  margin_plot <- points |>
+    filter(mean_importance < IMPORTANCE_CUTOFF) |>
+    mutate(label = str_glue("{label} ({sprintf('%.1f', mean_importance)})")) |>
+    ggplot(aes(x = 0, y = mean_implementation)) +
+    shared +
+    repel(direction = "y", hjust = 0, nudge_x = 0.12, xlim = c(0.08, NA), box.padding = 0.15) +
+    scale_x_continuous(limits = c(-0.05, 1), breaks = NULL) +
+    # Die Legende kommt aus dem Hauptfeld, das alle Gruppen enthält.
+    guides(colour = "none", fill = "none", shape = "none", size = "none") +
+    labs(
+      title = str_glue("Importance < {IMPORTANCE_CUTOFF}"),
+      x = NULL,
+      y = "Implementation, mean (1–5)"
+    )
+
+  # Alle Punkte werden übergeben, damit die Beschriftungen auch unbeschrifteten
+  # Punkten ausweichen; die größten Lücken tragen ihre Nummer, die Namen stehen in
+  # der Bildunterschrift.
+  main_plot <- points |>
+    filter(mean_importance >= IMPORTANCE_CUTOFF) |>
+    mutate(label = if_else(is.na(gap_rank), "", as.character(gap_rank))) |>
+    ggplot(aes(mean_importance, mean_implementation)) +
+    geom_vline(xintercept = means[["importance"]], colour = "#898781", linewidth = 0.3) +
+    annotate(
+      "text",
+      x = means[["importance"]], y = Inf,
+      label = sprintf("Mean %.2f", means[["importance"]]),
+      hjust = -0.1, vjust = 1.5, size = label_size, colour = "#52514e", family = "Arial"
+    ) +
+    annotate(
+      "text",
+      x = -Inf, y = means[["implementation"]],
+      label = sprintf("Mean %.2f", means[["implementation"]]),
+      hjust = -0.1, vjust = 1.6, size = label_size, colour = "#52514e", family = "Arial"
+    ) +
+    shared +
+    repel(box.padding = 0.35, point.padding = 0, force = 4, fontface = "bold") +
+    scale_x_continuous(
+      limits = c(IMPORTANCE_CUTOFF, 5),
+      breaks = seq(IMPORTANCE_CUTOFF, 5, 0.5),
+      expand = expansion(add = 0.05)
+    ) +
+    labs(
+      title = str_glue("Importance ≥ {IMPORTANCE_CUTOFF}"),
+      x = "Importance, mean (1–5)",
+      y = NULL
+    ) +
+    theme(axis.text.y = element_blank())
+
+  patchwork::wrap_plots(margin_plot, main_plot, widths = c(1.3, 3), guides = "collect") &
+    theme(
+      legend.box = "vertical",
+      legend.key.size = unit(3.5, "mm"),
+      legend.position = "bottom"
+    )
+}
+
+# Funktionen für die Umsetzung je Labor ----------------------------------------
+
+IT_STAFF_BREAKS <- c(-Inf, 0, 2, Inf)
+IT_STAFF_LABELS <- c("0", ">0–2", ">2")
+LAB_TYPE_LEVELS <- c("University", "Hospital", "Private")
+
+# Ein Labor zählt zum ersten zutreffenden Typ: Universität vor Krankenhaus vor
+# Privat. Hersteller erscheinen ab MIN_PRODUCT_N bewerteten Laboren, wie in Table 1.
+summarise_labs <- function(ratings, labs) {
+  ratings |>
+    summarise(
+      n_scale = sum(!is.na(score)),
+      mean_score = mean(score, na.rm = TRUE),
+      .by = response_id
+    ) |>
+    filter(n_scale > 0) |>
+    left_join(
+      select(labs, response_id, lis_product, starts_with("lab_"), it_fte),
+      by = "response_id"
+    ) |>
+    mutate(
+      lab_type = case_when(
+        lab_university ~ "University",
+        lab_hospital ~ "Hospital",
+        lab_private | lab_chain | lab_office ~ "Private"
+      ) |>
+        factor(levels = LAB_TYPE_LEVELS),
+      it_staff = cut(it_fte, IT_STAFF_BREAKS, labels = IT_STAFF_LABELS),
+      vendor = na_if(lis_product, "Sonstiges")
+    ) |>
+    add_count(vendor, name = "n_vendor") |>
+    mutate(
+      vendor = if_else(
+        !is.na(vendor) & n_vendor >= MIN_PRODUCT_N,
+        str_remove(vendor, " *[/|].*$"),
+        NA
+      )
+    )
+}
+
+# Beschriftet jede Gruppe mit ihrer Laborzahl und behält die Reihenfolge der Gruppen.
+label_groups <- function(data) {
+  data |>
+    add_count(facet, group) |>
+    arrange(facet, group) |>
+    mutate(x = fct_inorder(as.character(str_glue("{str_wrap(group, 8)}\n(n={n})"))))
+}
+
+plot_lab_implementation <- function(per_lab) {
+  overall_median <- median(per_lab$mean_score)
+  point_colour <- "#2a78d6"
+
+  base_theme <- list(
+    theme_minimal(base_size = 8, base_family = "Arial"),
+    theme(
+      axis.text = element_text(colour = "#0b0b0b", size = 7),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(colour = "#e1e0d9", linewidth = 0.2),
+      plot.tag = element_text(size = 9, face = "bold"),
+      strip.text = element_text(colour = "#0b0b0b", size = 8, face = "bold")
+    )
+  )
+
+  box_layers <- list(
+    geom_hline(yintercept = overall_median, colour = "#898781", linewidth = 0.3),
+    geom_boxplot(
+      outlier.shape = NA, fill = "#f0efec", colour = "#52514e",
+      width = 0.55, linewidth = 0.3
+    ),
+    geom_point(
+      position = position_jitter(width = 0.15, height = 0, seed = 1),
+      colour = point_colour, alpha = 0.7, size = 1.2
+    ),
+    facet_grid(cols = vars(facet), scales = "free_x", space = "free_x"),
+    scale_y_continuous(limits = c(1, 5), breaks = 1:5),
+    labs(x = NULL, y = "Implementation, mean per laboratory"),
+    base_theme
+  )
+
+  distribution <- ggplot(per_lab, aes(mean_score)) +
+    geom_histogram(binwidth = 0.2, boundary = 1, fill = point_colour, colour = "white", linewidth = 0.3) +
+    geom_vline(xintercept = overall_median, colour = "#52514e", linewidth = 0.3) +
+    annotate(
+      "text",
+      x = overall_median, y = Inf,
+      label = sprintf("Median %.2f", overall_median),
+      hjust = -0.08, vjust = 1.5, size = 6.5 / .pt, colour = "#52514e", family = "Arial"
+    ) +
+    scale_x_continuous(
+      limits = c(1, 5),
+      breaks = 1:5,
+      labels = c("1\nInadequate", "2", "3", "4", "5\nExemplary")
+    ) +
+    scale_y_continuous(
+      breaks = \(limits) seq(0, floor(limits[2]), by = 4),
+      expand = expansion(mult = c(0, 0.1))
+    ) +
+    labs(
+      x = str_glue("Implementation, mean per laboratory (n={nrow(per_lab)})"),
+      y = "Laboratories, n"
+    ) +
+    base_theme +
+    theme(panel.grid.major.x = element_line(colour = "#e1e0d9", linewidth = 0.2))
+
+  vendors <- per_lab |>
+    filter(!is.na(vendor)) |>
+    transmute(facet = "LIS product", group = fct_infreq(vendor), mean_score) |>
+    label_groups()
+
+  characteristics <- bind_rows(
+    per_lab |>
+      filter(!is.na(lab_type)) |>
+      transmute(facet = "Laboratory type", group = as.character(lab_type), mean_score),
+    per_lab |>
+      filter(!is.na(it_staff)) |>
+      transmute(facet = "IT staff, FTE", group = as.character(it_staff), mean_score)
+  ) |>
+    mutate(
+      facet = factor(facet, levels = c("Laboratory type", "IT staff, FTE")),
+      group = factor(group, levels = c(LAB_TYPE_LEVELS, IT_STAFF_LABELS))
+    ) |>
+    label_groups()
+
+  vendor_plot <- ggplot(vendors, aes(x, mean_score)) + box_layers
+  characteristics_plot <- ggplot(characteristics, aes(x, mean_score)) +
+    box_layers +
+    theme(axis.title.y = element_blank())
+
+  patchwork::wrap_plots(
+    distribution, vendor_plot, characteristics_plot,
+    design = "AA\nBC", widths = c(5, 6), heights = c(0.8, 1.2)
+  ) +
+    patchwork::plot_annotation(tag_levels = "A")
+}
+
 # Auswertung -------------------------------------------------------------------
 
 data_path <- Sys.getenv("LIS_DATEN_PFAD")
@@ -484,6 +895,7 @@ labs <- survey$responses |>
     country = country |>
       fct_recode(Germany = "Deutschland", Austria = "Österreich") |>
       fct_relevel("Germany", "Austria"),
+    lis_product = lis,
     lis = group_products(lis),
     order_entry = group_products(order_entry)
   )
@@ -604,4 +1016,100 @@ write_lines(
     "{population} LIS, laboratory information system."
   ),
   "res/figure_1_caption.txt"
+)
+
+# Importance-Performance-Analyse -----------------------------------------------
+
+items <- summarise_items(ratings, survey$codebook)
+
+gap_legend <- items |>
+  filter(!is.na(gap_rank)) |>
+  arrange(gap_rank) |>
+  mutate(entry = sprintf("(%d) %s, gap %.2f", gap_rank, label, gap)) |>
+  pull(entry) |>
+  str_c(collapse = "; ")
+
+ipa_note <- str_glue(
+  "{population} Importance is averaged over all laboratories that rated the ",
+  "feature, so the gap between importance and implementation compares partly ",
+  "different raters."
+)
+
+items |>
+  mutate(group = factor(group, levels = names(GROUP_COLOURS))) |>
+  arrange(group, desc(gap)) |>
+  transmute(
+    Group = as.character(group),
+    Feature = label,
+    `Importance, mean` = sprintf("%.2f", mean_importance),
+    `Importance, n` = n_importance,
+    `Implementation, mean` = sprintf("%.2f", mean_implementation),
+    `Implementation, n` = n_implementation,
+    Gap = sprintf("%.2f", gap)
+  ) |>
+  gt(groupname_col = "Group") |>
+  tab_caption("Importance and implementation of all 75 LIS features.") |>
+  tab_source_note(str_glue(
+    "Both scales range from 1 to 5. Gap is mean importance minus mean implementation. ",
+    "{ipa_note}"
+  )) |>
+  tab_source_note("LIS, laboratory information system.") |>
+  opt_table_font(font = c("Arial", "Helvetica", "sans-serif")) |>
+  tab_options(table_body.hlines.style = "none") |>
+  gtsave("res/table_s1.html")
+
+ggsave(
+  "res/figure_2.png",
+  plot = plot_importance_performance(items),
+  device = "png", width = 170, height = 150, units = "mm",
+  dpi = 600, bg = "white"
+)
+
+write_lines(
+  str_glue(
+    "Importance-performance analysis of {nrow(items)} LIS features. Each point is one ",
+    "feature; point area shows the number of implementation ratings. Grey lines mark ",
+    "the means across all features (importance {sprintf('%.2f', mean(items$mean_importance))}, ",
+    "implementation {sprintf('%.2f', mean(items$mean_implementation))}). Because of a ",
+    "ceiling effect, the main panel starts at an importance of {IMPORTANCE_CUTOFF}; the ",
+    "{sum(items$mean_importance < IMPORTANCE_CUTOFF)} features below are shown in the left ",
+    "panel with their mean importance in parentheses. Numbers mark the {N_GAP_LABELS} ",
+    "largest gaps between importance and implementation among features with at least ",
+    "{MIN_GAP_N} implementation ratings: {gap_legend}. {ipa_note} ",
+    "LIS, laboratory information system."
+  ),
+  "res/figure_2_caption.txt"
+)
+
+# Umsetzung je Labor -----------------------------------------------------------
+
+per_lab <- summarise_labs(ratings, labs)
+
+ggsave(
+  "res/figure_3.png",
+  plot = plot_lab_implementation(per_lab),
+  device = "png", width = 170, height = 140, units = "mm",
+  dpi = 600, bg = "white"
+)
+
+write_lines(
+  str_glue(
+    "Implementation by laboratory. The implementation score of a laboratory is the ",
+    "mean of its ratings on the scale from 1 (inadequate) to 5 (exemplary); ",
+    "{nrow(per_lab)} of the {nrow(labs)} included laboratories gave ",
+    "{min(per_lab$n_scale)} to {max(per_lab$n_scale)} such ratings ",
+    "(median {median(per_lab$n_scale)}). (A) Distribution of laboratory scores ",
+    "(median {sprintf('%.2f', median(per_lab$mean_score))}, range ",
+    "{sprintf('%.2f', min(per_lab$mean_score))} to {sprintf('%.2f', max(per_lab$mean_score))}). ",
+    "(B) Laboratories using one of the {n_distinct(per_lab$vendor, na.rm = TRUE)} LIS ",
+    "products used by at least {MIN_PRODUCT_N} of these laboratories ",
+    "(n={sum(!is.na(per_lab$vendor))}). (C) Laboratory type ",
+    "(n={sum(!is.na(per_lab$lab_type))}), assigned in the order university, hospital, ",
+    "private, where private includes office-based laboratories, laboratory networks ",
+    "and physician's office laboratories; and IT staff (n={sum(!is.na(per_lab$it_staff))}). ",
+    "Boxes show median and interquartile range, whiskers extend to 1.5 times the ",
+    "interquartile range, points show individual laboratories. Grey lines mark the ",
+    "overall median. FTE, full-time equivalent; LIS, laboratory information system."
+  ),
+  "res/figure_3_caption.txt"
 )

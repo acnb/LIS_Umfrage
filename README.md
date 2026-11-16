@@ -48,6 +48,26 @@ Grundlage sind die Umsetzungsbewertungen der `labs`, also 3038 Bewertungen aus 8
 
 `res/table_2.html` enthält die Kennzahlen je Gruppe, `res/figure_1.png` zeigt sie als zentrierte Likert-Balken. Die Bildunterschrift steht in `res/figure_1_caption.txt`.
 
+## Importance-Performance-Analyse
+
+`res/figure_2.png` zeigt alle 75 Merkmale mit mittlerer Wichtigkeit (x) und mittlerer Umsetzung (y), Gruppe als Farbe und Form, Punktfläche nach Zahl der Umsetzungsbewertungen. Die Hilfslinien liegen bei den Mitteln der Itemmittel.
+
+- **Abschneidegrenze:** Wegen des Deckeneffekts beginnt das Hauptfeld bei einer Wichtigkeit von 3,5 (`IMPORTANCE_CUTOFF`). Merkmale darunter stehen in einem schmalen Feld links, mit ihrer Wichtigkeit in Klammern.
+- **Beschriftung:** Die zehn größten Lücken (Wichtigkeit minus Umsetzung) unter Merkmalen mit mindestens 20 Umsetzungsbewertungen (`N_GAP_LABELS`, `MIN_GAP_N`) tragen die Nummern 1 bis 10. Die Namen und Lücken stehen in der Bildunterschrift, die das Skript aus derselben Rangfolge erzeugt.
+- **Einschränkung:** Die Wichtigkeit stammt von allen Laboren, die Umsetzung nur von Laboren mit Wichtigkeit 4 oder 5. Die Lücke vergleicht daher teilweise verschiedene Bewertende.
+
+`res/table_s1.html` enthält alle 75 Merkmale mit englischem Kurznamen als Tabellenfassung der Abbildung und als Zusatzmaterial. Die englischen Namen stehen in `ITEM_LABELS_EN`, das Skript bricht ab, wenn ein Item keinen Namen hat. Die Bildunterschrift steht in `res/figure_2_caption.txt`.
+
+## Umsetzung je Labor
+
+`res/figure_3.png` zeigt die mittlere Umsetzung je Labor: (A) Verteilung über alle Labore, (B) nach LIS-Produkt, (C) nach Labortyp und IT-Personal. Die Bildunterschrift steht in `res/figure_3_caption.txt`.
+
+- **Labormittel:** Mittelwert aller Bewertungen eines Labors auf der Umsetzungsskala (1 bis 5). Eingeschlossen sind 81 der 107 Labore, also alle mit mindestens einer solchen Bewertung.
+- **LIS-Produkt:** Gezeigt werden Produkte mit mindestens 5 bewerteten Laboren (`MIN_PRODUCT_N`, wie in Table 1). Die Antwort `Sonstiges` wird nicht gezeigt.
+- **Labortyp:** Die Mehrfachauswahl wird über eine Rangfolge eindeutig: Universität vor Krankenhaus vor Privat. Privat umfasst niedergelassene Labore, Ketten und Praxislabore.
+- **IT-Personal:** Gruppen 0, über 0 bis 2 und über 2 Vollzeitäquivalente (`IT_STAFF_BREAKS`).
+- **Rein beschreibend:** Es werden keine Tests auf Gruppenunterschiede berichtet.
+
 ## Projektstruktur
 
 ```text
@@ -76,7 +96,7 @@ assert(data_path != "", "LIS_DATEN_PFAD ist nicht gesetzt, siehe README.")
 
 ## Ausführung
 
-Voraussetzung sind R, die Pakete `tidyverse` und `gt` sowie die eingerichtete `.Renviron`. Das Skript wird aus dem Projektordner gestartet, damit R die Datei findet:
+Voraussetzung sind R, die Pakete `tidyverse`, `gt`, `ggrepel` und `patchwork` sowie die eingerichtete `.Renviron`. Das Skript wird aus dem Projektordner gestartet, damit R die Datei findet:
 
 ```sh
 Rscript auswertung.R
